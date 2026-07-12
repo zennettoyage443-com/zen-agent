@@ -1,6 +1,19 @@
-import { defineAgent } from 'eve';
+import { eveChannel } from 'eve/channels/eve';
+import type { AuthFn } from 'eve/channels/auth';
 
-export default defineAgent({
-  // Résolu via AI Gateway. Modifiable selon tes besoins/budget.
-  model: 'anthropic/claude-sonnet-5',
+function sharedKeyAuth(): AuthFn<Request> {
+  return async (request) => {
+    const key = request.headers.get('x-agent-key');
+    if (key !== process.env.ZEN_AGENT_KEY) return null;
+    return {
+      attributes: {},
+      authenticator: 'shared-key',
+      principalId: 'taha',
+      principalType: 'user',
+    };
+  };
+}
+
+export default eveChannel({
+  auth: [sharedKeyAuth()],
 });
