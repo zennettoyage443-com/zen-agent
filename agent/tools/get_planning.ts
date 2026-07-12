@@ -1,40 +1,47 @@
 import { defineTool } from 'eve/tools';
 import { z } from 'zod';
-import { fetchZenData } from '../lib/zenApi';
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { fetchZenData, saveZenData, genId } from '../lib/zenApi';
 
 export default defineTool({
   description:
-    "Lit les interventions planifiées pour une date donnée. Si aucune date n'est fournie, utilise la date du jour.",
+    "Ajoute une nouvelle intervention au planning ZEN NETTOYAGE 44. Nécessite au minimum un client, une date et une heure. Calcule toujours la date exacte (AAAA-MM-JJ) avant d'appeler cet outil — n'envoie jamais 'demain' ou 'lundi prochain' tel quel.",
   inputSchema: z.object({
-    date: z
+    client: z.string().min(1).describe('Nom du client ou de la société'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Date au format AAAA-MM-JJ'),
+    heure: z.string().regex(/^\d{2}:\d{2}$/).describe("Heure au format HH:MM"),
+    adresse: z.string().optional().describe("Adresse de l'intervention"),
+    tel: z.string().optional().describe('Numéro de téléphone du client'),
+    prestation: z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional()
-      .describe("Date au format AAAA-MM-JJ. Par défaut : aujourd'hui."),
+      .describe('Type de prestation : bureaux, copropriété, fin de chantier, vitres, Airbnb, grand ménage…'),
+    notes: z.string().optional().describe("Notes libres : code d'accès, étage, consignes…"),
+    statut: z
+      .enum(['à confirmer', 'confirmé', 'réalisé', 'annulé'])
+      .optional()
+      .describe("Par défaut : 'à confirmer', sauf si Taha dit explicitement que c'est confirmé."),
   }),
   async execute(input) {
-    const date = input.date ?? todayISO();
     const data = await fetchZenData();
-    const items = data.interventions
-      .filter((x) => x.date === date)
-      .sort((a, b) => (a.heure || '').localeCompare(b.heure || ''));
+
+    const intervention = {
+      id: genId(),
+      client: input.client,
+      date: input.date,
+      heure: input.heure,
+      adresse: input.adresse ?? '',
+      tel: input.tel ?? '',
+      prestation: input.prestation ?? '',
+      notes: input.notes ?? '',
+      statut: input.statut ?? ('à confirmer' as const),
+    };
+
+    data.interventions.push(intervention);
+    await saveZenData(data);
 
     return {
-      date,
-      count: items.length,
-      interventions: items.map((x) => ({
-        heure: x.heure,
-        client: x.client,
-        adresse: x.adresse ?? null,
-        tel: x.tel ?? null,
-        prestation: x.prestation ?? null,
-        statut: x.statut ?? 'à confirmer',
-        notes: x.notes ?? null,
-      })),
+      created: true,
+      intervention,
     };
   },
 });
